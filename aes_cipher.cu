@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <cuda_runtime.h>
 #include "my_utils.h" // Contains the precomputed matrices used for the AES algorithm
 
@@ -224,7 +225,6 @@ __global__ void cipher_control(byte *file_in, byte *file_out, long long *file_si
     res = *file_size % 16;
 
     while(block < *blocks) {
-        //printf("Thread= %d, Block = %d\n", threadIdx.x, block);
         memcpy(state, file_in + block  * 16, 16 * sizeof(byte));
         
         // Check if it is necessary to add padding to the last block
@@ -245,26 +245,6 @@ __global__ void cipher_control(byte *file_in, byte *file_out, long long *file_si
         block += gridDim.x * blockDim.x;
     }
 
-    /*// Check if the size of the input file is multiple of 16
-    res = *file_size % 16;
-                 
-    for(block = 1; block <= *blocks; block++) {
-        memcpy(state, file_in + (block - 1) * 16, 16 * sizeof(byte));
-        // Check if it is necessary to add padding to the last block
-        if(block == *blocks && res != 0) {
-            padding = 16 - res;
-            // Remember to change this in order to write to the correct memory
-            for(int i = res;i < res + padding;i++) {
-                state[i] = 0x00;
-            }
-        }
-
-        // Invoke the cipher process for the corresponding block
-        cipher(state, expanded_key, d_sbox, d_m2, d_m3);
-
-        // Copy the encrypted block to the output file
-        memcpy(file_out + (block - 1) * 16, state, 16 * sizeof(byte));             
-    }*/
 }
 
 
@@ -272,15 +252,14 @@ __global__ void cipher_control(byte *file_in, byte *file_out, long long *file_si
 
 
 int main(int argc, char *argv[]) {
-     if(argc < 2) {
-        printf("You must provide the name and route of the file to be encrypted.\nEj: ./encryp files/test.jpg\n");
+    if(argc < 3) {
+        printf("You must provide the name, route and extension of the file to be encrypted as well as the name for output\n");
+        printf("Example: ./encryp files/test.jpg files/test.aes\n");
         return 0;
-     }
-
+    }
     // Name of the input and output files
-    //byte *file_name = (byte*)"files/test.jpg";
     byte *file_name = (byte*)argv[1];
-    byte *out_file_name = (byte*)"files/test.aes";
+    byte *out_file_name = (byte*)argv[2];
 
     // Pointers to data in the HOST memory
     byte *file_in;              // Stores the binary data of the file to be encrypted
@@ -358,9 +337,7 @@ int main(int argc, char *argv[]) {
 
     // GPU memory copy
     cudaMemcpy(d_file_in,      file_in,      byte_size * (*file_in_size),  cudaMemcpyHostToDevice);
-    //cudaMemcpy(d_file_out,     file_out,     byte_size * (*file_out_size), cudaMemcpyHostToDevice);
     cudaMemcpy(d_key,          key,          byte_size *  16,              cudaMemcpyHostToDevice);
-    //cudaMemcpy(d_expanded_key, expanded_key, byte_size * 176,              cudaMemcpyHostToDevice);
     cudaMemcpy(d_sbox,         SBOX,         byte_size * 256,              cudaMemcpyHostToDevice);
     cudaMemcpy(d_m2,           M2,           byte_size * 256,              cudaMemcpyHostToDevice);
     cudaMemcpy(d_m3,           M3,           byte_size * 256,              cudaMemcpyHostToDevice);
@@ -370,23 +347,31 @@ int main(int argc, char *argv[]) {
 
 
     // Expand the key from 16 bytes to 176
-    key_expansion <<<1, 2>>>(d_key, d_expanded_key, d_sbox, d_rcon);
+    key_expansion <<<1, 1>>>(d_key, d_expanded_key, d_sbox, d_rcon);
 
+    // For synchronization purposes
     cudaMemcpy(expanded_key, d_expanded_key, byte_size * 176,              cudaMemcpyDeviceToHost);
 
 
-    printf("Starting encryption...\n");
     // Define the grid of threads used
     dim3 Threads(THREADS, THREADS);
     dim3 Thread_Blocks(THREAD_BLOCKS, THREAD_BLOCKS);
 
+    printf("Starting encryption...\n");
+    // Measure time
+    double time_taken;
+    start_timer();
+
     cipher_control <<< 128, 128>>> (d_file_in, d_file_out + 1, d_file_in_size, d_blocks, d_expanded_key, d_sbox, d_m2, d_m3);
-    printf("Done encryption.\n");
+    
+    time_taken = stop_timer();;
+    printf("Done encryption. Time = %lf ms\n", time_taken);
 
     file_out[0] = padding;
 
     cudaMemcpy(file_out + 1, d_file_out + 1, byte_size * (*file_out_size -1),              cudaMemcpyDeviceToHost);
 
+    printf("Saving the file...\n");
     write_file(out_file_name, file_out, file_out_size);
 
 
@@ -408,6 +393,8 @@ int main(int argc, char *argv[]) {
     cudaFree(d_rcon);
     cudaFree(d_m2);
     cudaFree(d_m3);
+
+    printf("Finished.\n");
     
     return 0; 
 }
