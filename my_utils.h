@@ -1,6 +1,41 @@
-// Auxiliary file that contains the matrices needed to compute the cipher and decipher
+// Auxiliary file that contains a procedure the measure the time in milliseconds and the precomputed matrices to do the AES
+
+#ifndef TIMER_H_
+#define TIMER_H_
+
+#include <time.h>
+#include <sys/time.h>
+#include <sys/types.h>
+
+
 
 typedef unsigned char byte;
+
+struct timeval startTime, stopTime;
+int started = 0;
+
+
+void start_timer() {
+  started = 1;
+  gettimeofday(&startTime, NULL);
+}
+
+double stop_timer() {
+  long seconds, useconds;
+  double duration = -1;
+
+  if (started) {
+    gettimeofday(&stopTime, NULL);
+    seconds  = stopTime.tv_sec  - startTime.tv_sec;
+    useconds = stopTime.tv_usec - startTime.tv_usec;
+    duration = (seconds * 1000.0) + (useconds / 1000.0);
+    started = 0;
+  }
+  return duration;
+}
+
+// Auxiliary variables that contains the matrices needed to compute the cipher and decipher
+
 /*SBOX (used for cipher)*/
 byte SBOX[256] =   {
   //0     1    2      3     4    5     6     7      8    9     A      B    C     D     E     F
@@ -144,3 +179,6 @@ byte M14[256] = {
 
  //Used in the key expansion
 unsigned char RCON[11] = {0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36};
+
+
+#endif
