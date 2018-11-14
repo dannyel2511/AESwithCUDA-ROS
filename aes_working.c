@@ -20,10 +20,10 @@ long time_counter=0; //Para contar el tiempo de ejecucion
 long time_total, time_encry, time_partial;
 
 /*Obtiene el valor correspondiente para el byte de la tabla S-BOX (Para cifrado)*/
-byte getSBox(byte pos) {return sbox[pos];}
+byte getSBox(byte pos) {return SBOX[pos];}
 
 /*Obtiene el valor correspondiente para el byte de la tabla RS-BOX (Para descifrado)*/
-byte getRSBox(byte pos) {return rsbox[pos];}
+byte getRSBox(byte pos) {return RSBOX[pos];}
 
 /*Realiza una rotacion circular de un byte a la izquierda*/
 void rotateLeft(byte *A) {    
@@ -61,7 +61,7 @@ void keyExpansion() {
             for(a = 0; a < 4; a++) {
                 temp[a] = getSBox(temp[a]);
             }
-            temp[0] =  temp[0] ^ rcon[i];
+            temp[0] =  temp[0] ^ RCON[i];
             i++;
         }
         for(a = 0; a < 4; a++) {

@@ -1,4 +1,4 @@
-// Auxiliar file that contains the matrices needed to compute the cipher and decipher
+// Auxiliary file that contains the matrices needed to compute the cipher and decipher
 
 typedef unsigned char byte;
 /*SBOX (used for cipher)*/

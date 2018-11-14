@@ -5,15 +5,11 @@
 
 typedef unsigned char byte;
 
+// State to save the data that will be encypted in each iteration
+byte *state;
+
 // Variables to open a file
 FILE *fp;
-
-/*Variables globales para el proceso de AES*/
-byte *state; /*Variable global que contiene el estado con el que se esta trabajando actualmente en el AES*/
-// Stores the key provided by the user
-byte *key;
-// The key after the expansion algorithm
-byte *expanded_key;/*Guarda la llave expandida*/
 
 unsigned int br;
 long time_counter=0; //Para contar el tiempo de ejecucion
@@ -33,7 +29,7 @@ void rotateLeft(byte *A) {
 }
 
 /*Se utiliza para generar una subllave para cada ronda a partir de la llave original.*/
-void keyExpansion() {
+void key_expansion(byte *key, byte *expanded_key) {
     byte temp[4];
     byte c=16;
     byte j, a, i=1;
@@ -59,7 +55,7 @@ void keyExpansion() {
     }
 }
 /*Funcion que mezcla la llave expandida con el bloque de estado*/
-void addRoundKey(int round) {
+void add_round_key(int round, byte *expanded_key) {
     /*El bloque de la llave expandida depende del numero de round*/
     int i, j;
     for(i=0;i<4;i++) {
@@ -69,7 +65,7 @@ void addRoundKey(int round) {
     }
 }
 /*Utiliza una matriz S-box para realizar una substitución byte a byte del bloque del estado.*/
-void subBytes() {
+void subbytes() {
     byte i, j;
     for(i=0;i<4;i++) 
         for(j=0;j<4;j++) 
@@ -81,7 +77,7 @@ void subBytes() {
 /*    2o renglón con rotación circular de 1 bytes a la izquierda.*/
 /*    3er renglón con rotación circular de 2 bytes a la izquierda.*/
 /*    4o renglón con rotación circular de 3 bytes a la izquierda.*/
-void shiftRows() {    
+void shift_rows() {    
     byte i;
     byte *temp = (byte*)malloc(4);
 
@@ -108,7 +104,7 @@ byte mul_3(byte a) { return M3[a]; }
 
 
 /*Substitución que usa aritmética de campos finitos sobre GF(2^^8).*/
-void mixColumns() {
+void mix_columns() {
     byte i, a0, a1, a2, a3;
     for(i=0;i<4;i++) {
         a0 = state[i * 4 + 0];
@@ -132,34 +128,34 @@ void print_state() {
    }
 }
 
-void cipher() {    
+void cipher(byte *expanded_key) {    
     int round=0;    
-    addRoundKey(round);    
+    add_round_key(round, expanded_key);    
     for(round=1; round < 10 ; round++) {
         //printf("----------Ronda %d------------\n", round);        
         //print_state();
-        subBytes();
+        subbytes();
         //printf("Despues de SubBytes\n");
         //print_state();
-        shiftRows();
+        shift_rows();
         //printf("Despues de shiftRows\n");
         //print_state();
-        mixColumns();
+        mix_columns();
         //printf("Despues de mixColumns\n");
         //print_state();
-        addRoundKey(round);        
+        add_round_key(round, expanded_key);        
     }
-    subBytes();
-    shiftRows();    
-    addRoundKey(10);    
+    subbytes();
+    shift_rows();    
+    add_round_key(10, expanded_key);    
 }
 
 
 //Leer el archivo de llave de la SD y guardarla en la variable global de key[]
-void read_key_from_file() {
+void read_key_from_file(byte *key) {
    byte *key_file = "key.txt";
    byte buffer[20];//Buffer para almacenar el bloque de datos leidos
-   byte i; 
+   byte i;
 
    if((fp = fopen(key_file, "rb")) == NULL){
        printf(" Cannot open input file: %s\n",key_file);
@@ -175,12 +171,6 @@ void read_key_from_file() {
    printf("Key stored correctly.");
 }
 
-byte hex_value(byte x) {    
-    if(x>='0' && x <= '9') return x-'0';
-    if(x>='a') return x-'a'+10; 
-    return x-'A'+10;
-}
-
 int get_file_size(FILE *f){
     int prev = ftell(f);
     fseek(f, 0L, SEEK_END);
@@ -189,7 +179,7 @@ int get_file_size(FILE *f){
     return size;
 }
 
-void cipher_control(byte *f_i) {
+void cipher_control(byte *f_i, byte *expanded_key) {
     byte file_route[100];//Ruta para buscar el archivo
     FILE *file_in;//Archivo de lectura
     FILE *file_out;//Archivo de escritura
@@ -252,7 +242,7 @@ void cipher_control(byte *f_i) {
             }                        
         }                
         time_partial = time_counter;      
-        cipher(); //Cifrar el bloque
+        cipher(expanded_key); //Cifrar el bloque
         time_encry += (time_counter - time_partial);
                              
         //Copiar el state a un nuevo bloque para escribirlo en el archivo encriptado                
@@ -290,30 +280,34 @@ void cipher_control(byte *f_i) {
 
 
 int main() {
-    byte *file_name; //Cadena auxiliar para guardar el nombre de archivo de entrada
-    byte *out_file_name; //Cadena auxiliar para guardar el nombre de archivo de salida    
-    byte input; //Opcion que seleeciona el usuario
-    int byte_size = sizeof(byte);
+   
+   // Stores the key provided by the user
+   byte *key;
+   // The key after the expansion algorithm
+   byte *expanded_key;
+
+   // Name of the input and output files
+   byte *file_name = "test.jpg";
+   byte *out_file_name = "test";
+
+   int byte_size = sizeof(byte);
+
     // Allocate HOST memory
     key = (byte*)malloc(16 * byte_size);
     expanded_key = (byte*)malloc(176 * byte_size);
     state = (byte*)malloc(16 * byte_size);
-                                              
-    /*------------------------Interfaz de usuario--------------------------*/
        
     printf("Cipher process started\n\r");
-   
-    file_name = "test.jpg";
-    out_file_name = "test";
-    read_key_from_file();//Solicitar que se introduzca la llave  
-    keyExpansion();
-    //Funcion para comenzar cifrado del archivo
-    cipher_control(file_name);
-    // cipher_or_decipher_file(file_name, out_file_name,1);                                               
+
+    // Read the key used to encrypt
+    read_key_from_file(key);
+    key_expansion(key, expanded_key);
+
+    cipher_control(file_name, expanded_key);
     
     free(key);
     free(expanded_key);
     free(state);
-    return 0;
-      
+    
+    return 0; 
 }
