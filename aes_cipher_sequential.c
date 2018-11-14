@@ -246,7 +246,11 @@ void cipher_control(byte *file_in_name, byte *file_in, byte *file_out, long long
 
 
 
-int main() {
+int main(int argc, char *argv[]) {
+    if(argc < 2) {
+        printf("You must provide the name and route of the file to be encrypted.\nEj: ./encryp files/test.jpg\n");
+        return 0;
+     }
     // Pointer to data in the HOST memory
     byte *file_in; // Stores the binary data of the file to be encrypted
     byte *file_out; // Stores the binary data of the encrypted file
@@ -262,7 +266,7 @@ int main() {
 */
 
     // Name of the input and output files
-    byte *file_name = "files/test.jpg";
+    byte *file_name = (byte*)argv[1];
     byte *out_file_name = "files/test.aes";
 
     int byte_size = sizeof(byte);
@@ -313,8 +317,6 @@ int main() {
     read_key_from_file(key);
     key_expansion(key, expanded_key);
 
-    printf("Debug------");
-    for(int i=0; i < 176; i++) printf("%02x ", expanded_key[i]);
     // GPU memory allocation
     // GPU memory copy
     //cudaMemcpy(d_sbox, SBOX, byte_size * 256, cudaMemcpyHostToDevice);

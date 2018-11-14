@@ -215,10 +215,37 @@ __global__ void cipher_control(byte *file_in, byte *file_out, long long *file_si
                     unsigned long *blocks, byte *expanded_key, byte *d_sbox, byte *d_m2, byte *d_m3)
 {
     byte state[16];
-    unsigned long block;
+    int block;
     int padding, res;
 
+    block = blockIdx.x * blockDim.x + threadIdx.x;
+
     // Check if the size of the input file is multiple of 16
+    res = *file_size % 16;
+
+    while(block < *blocks) {
+        //printf("Thread= %d, Block = %d\n", threadIdx.x, block);
+        memcpy(state, file_in + block  * 16, 16 * sizeof(byte));
+        
+        // Check if it is necessary to add padding to the last block
+        if(block == ((*blocks) - 1) && res != 0) {
+            padding = 16 - res;
+            // Remember to change this in order to write to the correct memory
+            for(int i = res;i < res + padding;i++) {
+                state[i] = 0x00;
+            }
+        }
+
+        // Invoke the cipher process for the corresponding block
+        cipher(state, expanded_key, d_sbox, d_m2, d_m3);
+
+        // Copy the encrypted block to the output file
+        memcpy(file_out + block  * 16, state, 16 * sizeof(byte));
+
+        block += gridDim.x * blockDim.x;
+    }
+
+    /*// Check if the size of the input file is multiple of 16
     res = *file_size % 16;
                  
     for(block = 1; block <= *blocks; block++) {
@@ -237,16 +264,22 @@ __global__ void cipher_control(byte *file_in, byte *file_out, long long *file_si
 
         // Copy the encrypted block to the output file
         memcpy(file_out + (block - 1) * 16, state, 16 * sizeof(byte));             
-    }
+    }*/
 }
 
 
 
 
 
-int main() {
+int main(int argc, char *argv[]) {
+     if(argc < 2) {
+        printf("You must provide the name and route of the file to be encrypted.\nEj: ./encryp files/test.jpg\n");
+        return 0;
+     }
+
     // Name of the input and output files
-    byte *file_name = (byte*)"files/test.jpg";
+    //byte *file_name = (byte*)"files/test.jpg";
+    byte *file_name = (byte*)argv[1];
     byte *out_file_name = (byte*)"files/test.aes";
 
     // Pointers to data in the HOST memory
@@ -287,6 +320,10 @@ int main() {
 
     // Load the file to be encrypted
     *file_in_size = load_file(file_name, &file_in);
+    if(*file_in_size == -1) {
+        printf("Error trying to read the file");
+        return 1;
+    }
     
     // Compute the number of blocks needed and check whether the file requires
     // padding at the end (when it is not a multiple of 16)
@@ -303,7 +340,7 @@ int main() {
     file_out = (byte*)malloc((*file_out_size) * byte_size);
     // Write in the first byte of the output the number of padding bytes
     file_out[0] = padding;
-     
+
     // Read the key used to encrypt
     read_key_from_file(key);
     
@@ -337,18 +374,22 @@ int main() {
 
     cudaMemcpy(expanded_key, d_expanded_key, byte_size * 176,              cudaMemcpyDeviceToHost);
 
+
     printf("Starting encryption...\n");
     // Define the grid of threads used
     dim3 Threads(THREADS, THREADS);
     dim3 Thread_Blocks(THREAD_BLOCKS, THREAD_BLOCKS);
 
-    //cipher_control <<< Thread_Blocks, Threads>>> (file_in, file_out + 1, file_in_size, blocks, d_expanded_key, d_sbox, d_m2, d_m3);
+    cipher_control <<< 128, 128>>> (d_file_in, d_file_out + 1, d_file_in_size, d_blocks, d_expanded_key, d_sbox, d_m2, d_m3);
     printf("Done encryption.\n");
+
+    file_out[0] = padding;
+
+    cudaMemcpy(file_out + 1, d_file_out + 1, byte_size * (*file_out_size -1),              cudaMemcpyDeviceToHost);
 
     write_file(out_file_name, file_out, file_out_size);
 
-    
-    
+
     free(file_in);
     free(file_out);
     free(file_in_size);
