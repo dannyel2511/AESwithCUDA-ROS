@@ -44,15 +44,15 @@ int main(int argc, char **argv)
 	while(ros::ok())
 	{    
 
-		data = (byte*)"Este es un mensaje cifrado";
+		data = (byte*)"Hola :)";
 
-		printf("Inicial\n");
+		printf("Initial message [%s]\n", data);
 		print_state_cpu(data);
 
 		cipher_main(data, sizeof(data)/sizeof(data[0]), &ciphered_data, my_key);		
 		//memcpy(cv_frame.data, ciphered_data, sizeof(cv_frame.data)/sizeof(cv_frame.data[0]));
 		
-		printf("Cifrado\n");
+		printf("Ciphered\n");
 		print_state_cpu(ciphered_data);
 	
 		msg.data = (char*)ciphered_data;

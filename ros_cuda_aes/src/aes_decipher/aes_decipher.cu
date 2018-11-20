@@ -252,7 +252,10 @@ __global__ void decipher_control(byte *file_in, byte *file_out, int padding, uns
 
 }
 
-
+int maxi(int a, int b) {
+    if(a > b) return a;
+    return b;
+}
 
 
 int *decipher_main(byte *data, int data_size, byte **deciphered_data, byte *decip_key) {
@@ -281,10 +284,11 @@ int *decipher_main(byte *data, int data_size, byte **deciphered_data, byte *deci
     byte *d_m14;
     byte *d_rcon;
 
+    //printf("size = %d", data_size);
 
     int byte_size = sizeof(byte);
-
     /* ------------ Allocate HOST memory ------------------------------*/
+    file_in      =  (byte*)          malloc(maxi(data_size,100) * byte_size);
     key =           (byte*)          malloc(16  * byte_size);
     expanded_key =  (byte*)          malloc(176 * byte_size);
     file_in_size =  (long long*)     malloc(sizeof(long long));
@@ -299,6 +303,7 @@ int *decipher_main(byte *data, int data_size, byte **deciphered_data, byte *deci
     *file_in_size = data_size;
     memcpy(file_in, data, data_size * byte_size);
     
+    
     // Compute the number of blocks needed and check whether the file has padding bytes at the end that need 
     // to be removed (it occurs when the cipher process added padding because the file size was not multiple of 16)
     *blocks = (*file_in_size) / 16;
@@ -308,7 +313,7 @@ int *decipher_main(byte *data, int data_size, byte **deciphered_data, byte *deci
     *file_out_size = *file_in_size - padding - 1;
 
     // Allocate the memory for the output file
-    file_out = (byte*)malloc((*file_out_size) * byte_size);
+    file_out = (byte*)malloc(maxi(100,(*file_out_size)) * byte_size);
 
     // Read the key used to encrypt
     //read_key_from_file(key);
@@ -371,7 +376,7 @@ int *decipher_main(byte *data, int data_size, byte **deciphered_data, byte *deci
 
 
     //free(file_in);
-    free(file_out);
+    //free(file_out);
     free(file_in_size);
     free(file_out_size);
     free(blocks);

@@ -47,22 +47,27 @@ int main(int argc, char **argv)
 	byte *data = (byte*)malloc(100 * sizeof(byte));
 	byte *deciphered_data = (byte*)malloc(100 * sizeof(byte));
 	byte my_key[16] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
-	
+	int size_data;
 
 	while(ros::ok())
 	{    
-
         if(ready) {
+            //size_data = sizeof(cip_msg.data)/sizeof(cip_msg.data[0]);
+            size_data = 26;
+            for(int i = 0; i < size_data; i++) {
+                data[i] = cip_msg.data[i];    
+
+            }
 		    //data = cip_msg.data;
             //memcpy(data, cip_msg.data, sizeof(cip_msg.data)/sizeof(cip_msg.data[0]));
 
-		    printf("Initial\n");
-		    print_state_cpu(data);
+		    //printf("Initial\n");
+		    //print_state_cpu(data);
 
-		    decipher_main(data, sizeof(data)/sizeof(data[0]), &deciphered_data, my_key);		
+		    decipher_main(data, size_data, &deciphered_data, my_key);		
 		
-		    printf("Deciphered\n");
-		    print_state_cpu(deciphered_data);
+		    //printf("Deciphered\n");
+		    //print_state_cpu(deciphered_data);
 
             decip_msg.data = (char*)deciphered_data;
 	
