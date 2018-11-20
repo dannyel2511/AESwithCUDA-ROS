@@ -7,8 +7,11 @@
 
 // Temporal global variables
 byte *d_sbox;
-byte *d_m2;
-byte *d_m3;
+byte *d_rsbox;
+byte *d_m9;
+byte *d_m11;
+byte *d_m13;
+byte *d_m14;
 byte *d_rcon;
 
 /*************************************** CPU ********************************************/
@@ -55,7 +58,7 @@ long long load_file(byte *file_in_name, byte **file_in) {
         printf("Error trying to open the file %s\n", file_in_name);
         return -1;
     }          
-    // Compute size of the file          
+    // Compute size of the file
     size = get_file_size(f_i);
 
     // Allocate memory to store the input file as binary data
@@ -99,9 +102,12 @@ void print_state(byte *state) {
 }
 
 // Get the data from the auxiliar matrices
-byte get_sbox(byte pos) {return d_sbox[pos];}
-byte mul_2(byte a) { return d_m2[a]; }
-byte mul_3(byte a) { return d_m3[a]; }
+byte get_rsbox(byte pos)    { return d_rsbox[pos];}
+byte get_sbox( byte pos)    { return d_sbox[pos];}
+byte mul_9(byte  a)         { return d_m9[a];  }
+byte mul_11(byte a)         { return d_m11[a]; }
+byte mul_13(byte a)         { return d_m13[a]; }
+byte mul_14(byte a)         { return d_m14[a]; }
 
 // Circular shift to the left by one position
 void rotateLeft(byte *A) {    
@@ -111,6 +117,15 @@ void rotateLeft(byte *A) {
         A[i] = A[i+1];
     }
     A[3] = aux;
+}
+// Circular shift to the right by one position
+void rotateRight(byte *A) {        
+    byte i;
+    byte aux = A[3];    
+    for(i=3;i>0;i--) {
+        A[i] = A[i-1];
+    }
+    A[0] = aux;
 }
 /*************************************** AES functions *************************************/
 // To expand the key using the SBOX matrix
@@ -152,31 +167,31 @@ void add_round_key(byte *state, int round, byte *expanded_key) {
 }
 
 // To substitute the value of the state with the corresponding value in the SBOX matrix
-void subbytes(byte *state) {
+void inverse_subbytes(byte *state) {
     byte i, j;
     for(i=0;i<4;i++) 
         for(j=0;j<4;j++) 
-            state[j * 4 + i] = get_sbox(state[j * 4 + i]);
+            state[j * 4 + i] = get_rsbox(state[j * 4 + i]);
 }
 
-// To change the order in each row performing shifts to the left
-void shift_rows(byte *state) {    
+// To change the order in each row performing shifts to the right
+void inverse_shift_rows(byte *state) {    
     byte i;
     byte temp[4];
 
     memcpy(temp, state + 4, 4);
-    rotateLeft(temp);        
+    rotateRight(temp);        
     memcpy(state + 4, temp, 4);
 
     memcpy(temp, state + 8, 4);
-    rotateLeft(temp);
-    rotateLeft(temp);
+    rotateRight(temp);
+    rotateRight(temp);
     memcpy(state + 8, temp, 4);
 
     memcpy(temp, state + 12, 4);
-    rotateLeft(temp);
-    rotateLeft(temp);
-    rotateLeft(temp);
+    rotateRight(temp);
+    rotateRight(temp);
+    rotateRight(temp);
     memcpy(state + 12, temp, 4);
 
 }
@@ -184,7 +199,7 @@ void shift_rows(byte *state) {
 
 
 // To perform a substitution that uses finite fields arithmetic over GF(2^^8).
-void mix_columns(byte *state) {
+void inverse_mix_columns(byte *state) {
     byte i, a0, a1, a2, a3;
     for(i=0;i<4;i++) {
         a0 = state[i * 4 + 0];
@@ -192,53 +207,49 @@ void mix_columns(byte *state) {
         a2 = state[i * 4 + 2];
         a3 = state[i * 4 + 3];
 
-        state[i * 4 + 0] = mul_2(a0) ^ mul_3(a1) ^ a2 ^ a3;
-        state[i * 4 + 1] = mul_2(a1) ^ mul_3(a2) ^ a0 ^ a3;
-        state[i * 4 + 2] = mul_2(a2) ^ mul_3(a3) ^ a0 ^ a1;
-        state[i * 4 + 3] = mul_2(a3) ^ mul_3(a0) ^ a1 ^ a2;        
+        state[i * 4 + 0] = mul_14(a0) ^ mul_11(a1) ^ mul_13(a2) ^ mul_9( a3);
+        state[i * 4 + 1] = mul_9( a0)  ^ mul_14(a1) ^ mul_11(a2) ^ mul_13(a3);
+        state[i * 4 + 2] = mul_13(a0) ^ mul_9( a1)  ^ mul_14(a2) ^ mul_11(a3);
+        state[i * 4 + 3] = mul_11(a0) ^ mul_13(a1) ^ mul_9( a2)  ^ mul_14(a3);
     }
 }
 
 // To cipher the block of data using the AES algorithm
-void cipher(byte *state, byte *expanded_key) {    
+void decipher(byte *state, byte *expanded_key) {    
     int round=0;    
-    add_round_key(state, round, expanded_key);    
-    for(round=1; round < 10 ; round++) {
-        subbytes(state);
-        shift_rows(state);
-        mix_columns(state);
-        add_round_key(state, round, expanded_key);
-    }
-    subbytes(state);
-    shift_rows(state);
     add_round_key(state, 10, expanded_key);    
+    for(round = 9; round > 0 ; round--) {
+        inverse_shift_rows(state);
+        inverse_subbytes(state);
+        add_round_key(state, round, expanded_key);
+        inverse_mix_columns(state);
+    }
+    inverse_shift_rows(state);
+    inverse_subbytes(state);
+    add_round_key(state, 0, expanded_key);
 }
 
 
-void cipher_control(byte *file_in_name, byte *file_in, byte *file_out, long long *file_size, unsigned long *blocks, byte *expanded_key) {
+void decipher_control(byte *file_in, byte *file_out, int padding, unsigned long *blocks, byte *expanded_key) {
     byte state[16];
-    unsigned long block;
-    int padding, res;
+    int block;
 
-    // Check if the size of the input file is multiple of 16
-    res = *file_size % 16;
-                 
     for(block = 1; block <= *blocks; block++) {
-        memcpy(state, file_in + (block - 1) * 16, 16 * sizeof(byte));
-        // Check if it is neccesary to add padding to the last block
-        if(block == *blocks && res != 0) {
-            padding = 16 - res;
-            // Remember to change this in order to write to the correct memory
-            for(int i = res;i < res + padding;i++) {
-                state[i] = 0x00;
-            }
-        }
+        // Copy the block of memory from the input file to the state
+        memcpy(state, file_in + block  * 16, 16 * sizeof(byte));
 
         // Invoke the cipher process for the corresponding block
-        cipher(state, expanded_key);
+        decipher(state, expanded_key);
 
-        // Copy the encrypted block to the output file
-        memcpy(file_out + (block - 1) * 16, state, 16 * sizeof(byte));             
+        // Check if it is necessary to remove padding from the last block
+        if(block == ((*blocks) - 1) && padding > 0) {
+             // Copy the encrypted block to the output file removing the padding
+             memcpy(file_out + block  * 16, state, (16 - padding) * sizeof(byte));
+        }
+        else {
+            // Copy the encrypted block to the output file
+            memcpy(file_out + block  * 16, state, 16 * sizeof(byte));
+        }
     }
 }
 
@@ -248,13 +259,10 @@ void cipher_control(byte *file_in_name, byte *file_in, byte *file_out, long long
 
 int main(int argc, char *argv[]) {
     if(argc < 3) {
-        printf("You must provide the name, route and extension of the file to be encrypted as well as the name for output\n");
-        printf("Example: ./encryp files/test.jpg files/test.aes\n");
+        printf("You must provide the name, route and extension of the file to be decrypted as well as the name for output\n");
+        printf("Example: ./decryp_seq files/test.aes files/test.txt\n");
         return 0;
     }
-    // Name of the input and output files
-    byte *file_name = (byte*)argv[1];
-    byte *out_file_name = (byte*)argv[2];
     // Pointer to data in the HOST memory
     byte *file_in; // Stores the binary data of the file to be encrypted
     byte *file_out; // Stores the binary data of the encrypted file
@@ -263,24 +271,33 @@ int main(int argc, char *argv[]) {
     long long *file_in_size, *file_out_size;
     unsigned long *blocks, padding; // Number of blocks to divide the input file for the AES process
 
+    // Name of the input and output files
+    byte *file_name = (byte*)argv[1];
+    byte *out_file_name = (byte*)argv[2];
+
     int byte_size = sizeof(byte);
     // Allocate HOST memory
     key = (byte*)malloc(16 * byte_size);
     expanded_key = (byte*)malloc(176 * byte_size);
-    //state = (byte*)malloc(16 * byte_size);
     blocks = (unsigned long*)malloc(sizeof(unsigned long));
     file_in_size = (long long*)malloc(sizeof(long long));
     file_out_size = (long long*)malloc(sizeof(long long));
 
-    d_sbox = (byte*) malloc(byte_size * 256);
-    d_m2 = (byte*) malloc(byte_size * 256);
-    d_m3 = (byte*) malloc(byte_size * 256);
-    d_rcon = (byte*) malloc(byte_size * 11);
+    d_sbox  = (byte*) malloc(byte_size * 256);
+    d_rsbox = (byte*) malloc(byte_size * 256);
+    d_m9    = (byte*) malloc(byte_size * 256);
+    d_m11   = (byte*) malloc(byte_size * 256);
+    d_m13   = (byte*) malloc(byte_size * 256);
+    d_m14   = (byte*) malloc(byte_size * 256);
+    d_rcon  = (byte*) malloc(byte_size * 11);
 
 
-    memcpy(d_sbox, SBOX, byte_size * 256);
-    memcpy(d_m2, M2, byte_size * 256);
-    memcpy(d_m3, M3, byte_size * 256);
+    memcpy(d_sbox,  SBOX, byte_size * 256);
+    memcpy(d_rsbox, RSBOX, byte_size * 256);
+    memcpy(d_m9,  M9,  byte_size * 256);
+    memcpy(d_m11, M11, byte_size * 256);
+    memcpy(d_m13, M13, byte_size * 256);
+    memcpy(d_m14, M14, byte_size * 256);
     memcpy(d_rcon, RCON, byte_size * 11);
        
     /* Starting encryption pre-process */
@@ -291,39 +308,34 @@ int main(int argc, char *argv[]) {
     // Compute the number of blocks needed and check whether the file requires a byte of
     // padding at the end (when it is not a multiple of 16)
     *blocks = (*file_in_size) / 16;
-    padding = 0;
-    if(*file_in_size % 16 != 0) {
-        padding = 16 - (*file_in_size) % 16;
-        (*blocks)++;
-    }
-    // The size of the output file will be a multiple of 16 + 1 because of the byte at the beginning to indicate the padding
-    *file_out_size = (*blocks) * 16 + 1;
+    padding = file_in[0];
+   
+    // The size of the output file will be the input size after removing the padding and the first byte used to indicate padding
+    *file_out_size = *file_in_size - padding - 1;
+    printf("in size%d, out = %d\n", *file_in_size, *file_out_size );
 
     // Allocate the memory for the output file
     file_out = (byte*)malloc((*file_out_size) * byte_size);
-    // Write in the first byte of the output the number of padding bytes
-    file_out[0] = padding;
      
 
     // Read the key used to encrypt
     read_key_from_file(key);
     key_expansion(key, expanded_key);
 
-    printf("Starting encryption...\n");
+    printf("Starting decryption...\n");
     // Measure time
     double time_taken = 0;
     
     for(int i = 0; i < 10; i++) {
       start_timer();
-      cipher_control(file_name, file_in, file_out + 1, file_in_size, blocks, expanded_key);
+      decipher_control(file_in + 1, file_out, padding, blocks, expanded_key);
       time_taken += stop_timer();
     }
     
-    printf("Done encryption. Time = %lf ms\n", time_taken/10.0);
+    printf("Done decryption. Time = %lf ms\n", time_taken/10.0);
 
-    write_file(out_file_name, file_out, file_out_size);
+    /*write_file(out_file_name, file_out, file_out_size);
 
-    
     
     free(file_in);
     free(file_out);
@@ -332,7 +344,13 @@ int main(int argc, char *argv[]) {
     free(blocks);
     free(key);
     free(expanded_key);
-    //free(state);
+    free(d_sbox);
+    free(d_rsbox);
+    free(d_rcon);
+    free(d_m9);
+    free(d_m11);
+    free(d_m13);
+    free(d_m14);*/
     
     return 0; 
 }

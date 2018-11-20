@@ -225,6 +225,7 @@ __global__ void cipher_control(byte *file_in, byte *file_out, long long *file_si
     res = *file_size % 16;
 
     while(block < *blocks) {
+        // Copy the block of memory from the input file to the state
         memcpy(state, file_in + block  * 16, 16 * sizeof(byte));
         
         // Check if it is necessary to add padding to the last block
@@ -359,13 +360,15 @@ int main(int argc, char *argv[]) {
 
     printf("Starting encryption...\n");
     // Measure time
-    double time_taken;
-    start_timer();
-
-    cipher_control <<< 128, 128>>> (d_file_in, d_file_out + 1, d_file_in_size, d_blocks, d_expanded_key, d_sbox, d_m2, d_m3);
+    double time_taken = 0;
     
-    time_taken = stop_timer();;
-    printf("Done encryption. Time = %lf ms\n", time_taken);
+    for(int i = 0; i < 10; i++) {
+        start_timer();
+        cipher_control <<< 128, 128>>> (d_file_in, d_file_out + 1, d_file_in_size, d_blocks, d_expanded_key, d_sbox, d_m2, d_m3);
+        time_taken += stop_timer();
+        cudaDeviceSynchronize();
+    }
+    printf("Done encryption. Time = %lf ms\n", time_taken/10.0);
 
     file_out[0] = padding;
 

@@ -232,7 +232,7 @@ __global__ void decipher_control(byte *file_in, byte *file_out, int padding, uns
     block = blockIdx.x * blockDim.x + threadIdx.x;
 
     while(block < *blocks) {
-        //printf("Thread= %d, Block = %d\n", threadIdx.x, block);
+        // Copy the block of memory from the input file to the state
         memcpy(state, file_in + block  * 16, 16 * sizeof(byte));
 
         // Invoke the cipher process for the corresponding block
@@ -364,17 +364,20 @@ int main(int argc, char *argv[]) {
 
     printf("Starting decryption...\n");
     // Measure time
-    double time_taken;
-    start_timer();
+    double time_taken = 0;
 
-    decipher_control <<< 128, 128>>> (d_file_in + 1, d_file_out, padding, d_blocks, d_expanded_key, d_sbox, d_rsbox, d_m9, d_m11, d_m13, d_m14);
+    for(int i = 0; i < 10; i++) {
+        start_timer();
+        decipher_control <<< 128, 128>>> (d_file_in + 1, d_file_out, padding, d_blocks, d_expanded_key, d_sbox, d_rsbox, d_m9, d_m11, d_m13, d_m14);
+        time_taken += stop_timer();
+        cudaDeviceSynchronize();
+    }
 
-    time_taken = stop_timer();;
-    printf("Done decryption. Time = %lf ms\n", time_taken);
+    printf("Done decryption. Time = %lf ms\n", time_taken/10.0);
 
     file_out[0] = padding;
 
-    cudaMemcpy(file_out, d_file_out, byte_size * (*file_out_size -1), cudaMemcpyDeviceToHost);
+    cudaMemcpy(file_out, d_file_out, byte_size * (*file_out_size), cudaMemcpyDeviceToHost);
 
     write_file(out_file_name, file_out, file_out_size);
 
